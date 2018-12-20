@@ -27,10 +27,10 @@ class CriticArchitecture(nn.Module, RLModel):
         """
         super(CriticArchitecture, self).__init__()
         torch.manual_seed(random_seed)
-        self.fc1 = nn.Linear(state_size, 256)
-        self.bn1 = nn.BatchNorm1d(256)
+        self.fc1 = nn.Linear(state_size*n_agents, 256)
         self.fc2 = nn.Linear(256 + action_size*n_agents, 256)
-        self.fc3 = nn.Linear(256, n_agents)
+        self.fc3 = nn.Linear(256, 256)
+        self.fc4 = nn.Linear(256, 1)
         self.reset_parameters()
 
     def forward(self, x, actions):
@@ -41,10 +41,10 @@ class CriticArchitecture(nn.Module, RLModel):
         :return: output of the network (tenso)
         """
         h = F.relu(self.fc1(x))
-        h = self.bn1(h)
         h = torch.cat([h, actions], dim=1)
         h = F.relu(self.fc2(h))
-        out = self.fc3(h)
+        h = F.relu(self.fc3(h))
+        out = self.fc4(h)
         return out
 
 
@@ -70,9 +70,9 @@ class ActorArchitecture(nn.Module, RLModel):
         super(ActorArchitecture, self).__init__()
         torch.manual_seed(random_seed)
         self.fc1 = nn.Linear(state_size, 256)
-        self.bn1 = nn.BatchNorm1d(256)
         self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, action_size)
+        self.fc3 = nn.Linear(256, 256)
+        self.fc4 = nn.Linear(256, action_size)
         self.reset_parameters()
 
     def forward(self, x):
@@ -82,9 +82,9 @@ class ActorArchitecture(nn.Module, RLModel):
         :return: output value of the network (float)
         """
         h = F.relu(self.fc1(x))
-        h = self.bn1(h)
         h = F.relu(self.fc2(h))
-        out = F.tanh(self.fc3(h))
+        h = F.relu(self.fc3(h))
+        out = F.tanh(self.fc4(h))
         return out
 
     def reset_parameters(self):
