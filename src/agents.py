@@ -255,56 +255,62 @@ class MADDPGAgent:
                 self.update(states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch)
 
     def update(self, states, actions, rewards, next_states, dones):
-        self._update_critics(states, actions, rewards, next_states, dones)
-        self._update_actors(states)
-        for agent in self.agents:
+        for i, agent in enumerate(self.agents):
+            self._update_critics(states=states, actions=actions, rewards=rewards, next_states=next_states,
+                                 dones=dones, agent_number=i)
+            self._update_actors(states, agent_number=i)
             agent._soft_target_update()
 
     def reset(self):
         for agent in self.agents:
             agent.reset()
 
-    def _update_critics(self, states, actions, rewards, next_states, dones):
-        for i, agent in enumerate(self.agents):
-            next_actions_centralized = []
-            for i_critic, agent_critic in enumerate(self.agents):
-                next_actions_centralized.append(agent_critic.actor_target.forward(next_states[:, i_critic, :]))
-            next_actions_centralized = torch.cat(next_actions_centralized, 1)
+    def _update_critics(self, states, actions, rewards, next_states, dones, agent_number):
+        agent = self.agents[agent_number]
+        # Calculate next actions centralized using actor target network
+        next_actions_centralized = []
+        for i_critic, agent_critic in enumerate(self.agents):
+            next_actions_centralized.append(agent_critic.actor_target.forward(next_states[:, i_critic, :]))
+        next_actions_centralized = torch.cat(next_actions_centralized, 1)
 
-            states_centralized = states.view(-1, self.state_size*self.n_agents)
-            next_states_centralized = next_states.view(-1, self.state_size*self.n_agents)
-            actions_centralized = actions.view(-1, self.action_size*self.n_agents)
+        # Calculate the centralized versions of the states, next states and actions
+        states_centralized = states.view(-1, self.state_size*self.n_agents)
+        next_states_centralized = next_states.view(-1, self.state_size*self.n_agents)
+        actions_centralized = actions.view(-1, self.action_size*self.n_agents)
 
-            with torch.no_grad():
-                q_value_next_max = agent.critic_target.forward(next_states_centralized, next_actions_centralized).detach()
-            q_value_target = rewards.squeeze()[:,[i]] + agent.gamma * q_value_next_max * (1 - dones.squeeze()[:,[i]])
+        # Calculate the q_value future to calculate the target
+        with torch.no_grad():
+            q_value_next_max = agent.critic_target.forward(next_states_centralized, next_actions_centralized).detach()
+        q_value_target = rewards.squeeze()[:,[agent_number]] + agent.gamma * q_value_next_max * (1 - dones.squeeze()[:,[agent_number]])
 
-            # Calculate the loss
-            q_value_current = agent.critic_local.forward(states_centralized, actions_centralized)
-            loss = F.mse_loss(q_value_current, q_value_target.detach())
+        # Calculate the current q value
+        q_value_current = agent.critic_local.forward(states_centralized, actions_centralized)
 
-            # Minimize the loss
-            agent.critic_optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(agent.critic_local.parameters(), 1)
-            agent.critic_optimizer.step()
+        # Calculate the loss
+        loss = F.mse_loss(q_value_current, q_value_target.detach())
 
-    def _update_actors(self, states):
+        # Minimize the loss
+        agent.critic_optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(agent.critic_local.parameters(), 1)
+        agent.critic_optimizer.step()
+
+    def _update_actors(self, states, agent_number):
         states_centralized = states.view(-1, self.state_size * self.n_agents)
-        for i, agent in enumerate(self.agents):
-            actions_pred_centralized = []
-            for i_critic, agent_critic in enumerate(self.agents):
-                action_pred = agent_critic.actor_target.forward(states[:, i_critic, :])
-                action_pred = action_pred.detach() if i!=i_critic else action_pred
-                actions_pred_centralized.append(action_pred)
+        agent = self.agents[agent_number]
+        actions_pred_centralized = []
+        for i_critic, agent_critic in enumerate(self.agents):
+            action_pred = agent_critic.actor_local.forward(states[:, i_critic, :])
+            action_pred = action_pred.detach() if agent_number!=i_critic else action_pred
+            actions_pred_centralized.append(action_pred)
 
-            actions_pred_centralized = torch.cat(actions_pred_centralized, 1)
-            critic_action_values = agent.critic_local.forward(states_centralized, actions_pred_centralized)
-            # Calculate the loss
-            loss = -critic_action_values.mean()
-            #set_trace()
-            # Minimize the loss
-            agent.actor_optimizer.zero_grad()
-            loss.backward()
-            # torch.nn.utils.clip_grad_norm_(self.actor_local.parameters(), 1)
-            agent.actor_optimizer.step()
+        actions_pred_centralized = torch.cat(actions_pred_centralized, 1)
+        critic_action_values = agent.critic_local.forward(states_centralized, actions_pred_centralized)
+        # Calculate the loss
+        loss = -critic_action_values.mean()
+        #set_trace()
+        # Minimize the loss
+        agent.actor_optimizer.zero_grad()
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(self.actor_local.parameters(), 1)
+        agent.actor_optimizer.step()
