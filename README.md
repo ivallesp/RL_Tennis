@@ -1,4 +1,5 @@
 # Project 3: Collaboration and Competition
+
 Iván Vallés Pérez - December 2018
 
 ## Introduction
@@ -48,6 +49,7 @@ The [**MADDPG**](https://arxiv.org/abs/1706.02275) algorithm has been used as a 
 
 The neural networks implemented to solve this environment (both for the critic and for the agent) are simply Multi-Layer Perceptrons with 3 256-units hidden layers.
 
+The neural networks implemented to solve this environment (both for the critic and for the agent) are simply Multi-Layer Perceptrons with 3 256-units hidden layers.
 
 ## Getting Started
 
