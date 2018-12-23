@@ -5,7 +5,6 @@ import numpy as np
 from torch import optim
 import torch
 import torch.nn.functional as F
-from ipdb import set_trace
 
 
 class DDPGAgent:
@@ -208,6 +207,25 @@ class OUNoise:
 class MADDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_size, action_size, tau, gamma, replay_size, batch_size,
                  n_agents=1, n_batches_train=1, alpha=0, random_seed=655321):
+        """
+        Agent implementing MADDPG algorithm. More info here: https://arxiv.org/abs/1706.02275
+        :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
+        src.models module (pytorch model object)
+        :param actor_arch: pytorch neural network implementing a actor function (s -> P(a|s)), located in the
+        src.models module (pytorch model object)
+        :param state_size: size of the state space (int)
+        :param action_size: size of the action space (int)
+        :param tau: constant controling the rate of the soft update of the target networks from the local
+        networks (float)
+        :param gamma: discount factor (float)
+        :param replay_size: size of the experience replay buffer (int)
+        :param batch_size: size of the batches which are going to be used to train the neural networks (int)
+        :param n_agents: number of agents (in case of MADDPG, the critic network should implement a centralized
+         action-value function) (int)
+        :param n_batches_train: number of batches to train in each agent step (int)
+        :param alpha: effort punishment (experiment) (float)
+        :param random_seed: random seed for numpy and pytorch (int)
+        """
         # Initialize agents
         self.agents = [DDPGAgent(critic_arch=critic_arch,
                                  actor_arch=actor_arch,
@@ -234,6 +252,13 @@ class MADDPGAgent:
         self.n_batches_train = n_batches_train
 
     def act(self, states, epsilon, use_target_model=False):
+        """
+        Calculates the next action (given the experience) for all the agents (iterable)
+        :param states: observations of the MDP (iterable)
+        :param epsilon: exploration rate (float)
+        :param use_target_model: indicates if target model should be used instead of local model (bool)
+        :return: actions to take (iterable)
+        """
         assert states.shape[0] == self.n_agents
         actions = []
         for i, agent in enumerate(self.agents):
@@ -243,6 +268,15 @@ class MADDPGAgent:
         return actions
 
     def step(self, states, actions, rewards, next_states, dones):
+        """
+        Update the experience replay buffer and trains the networks
+        :param states: observation variables of the MDP (iterable)
+        :param actions: actions taken at each step (iteranble)
+        :param rewards: rewards achieved (iterable)
+        :param next_states: next observation where the agent lead to (iterable)
+        :param dones: did the environment done? (iterable)
+        :return: None
+        """
         self.replay_buffer.append([states, actions, rewards, next_states, dones])
 
         for _ in range(self.n_batches_train):
@@ -255,17 +289,44 @@ class MADDPGAgent:
                 self.update(states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch)
 
     def update(self, states, actions, rewards, next_states, dones):
+        """
+        Updates the networks using the data provided
+        :param states: observation variables of the MDP (iterable)
+        :param actions: actions taken at each step (iteranble)
+        :param rewards: rewards achieved (iterable)
+        :param next_states: next observation where the agent lead to (iterable)
+        :param dones: did the environment done? (iterable)
+        :return: None
+        """
         for i, agent in enumerate(self.agents):
+            # Update the critic
             self._update_critics(states=states, actions=actions, rewards=rewards, next_states=next_states,
                                  dones=dones, agent_number=i)
+            # Update the actor
             self._update_actors(states, agent_number=i)
+
+            # Perform soft update to the target networks for both, the critic and the actor
             agent._soft_target_update()
 
     def reset(self):
+        """
+        Performs the agent related tasks required when reseting the environment.
+        :return: None
+        """
         for agent in self.agents:
             agent.reset()
 
     def _update_critics(self, states, actions, rewards, next_states, dones, agent_number):
+        """
+        Updates the critic network
+        :param states: observation variables of the MDP (iterable)
+        :param actions: actions taken at each step (iteranble)
+        :param rewards: rewards achieved (iterable)
+        :param next_states: next observation where the agent lead to (iterable)
+        :param dones: did the environment done? (iterable)
+        :param agent_number: which agent should be updated (int)
+        :return: None
+        """
         agent = self.agents[agent_number]
         # Calculate next actions centralized using actor target network
         next_actions_centralized = []
@@ -296,8 +357,17 @@ class MADDPGAgent:
         agent.critic_optimizer.step()
 
     def _update_actors(self, states, agent_number):
+        """
+        Updates the actor network
+        :param states: observation variables of the MDP (iterable)
+        :param agent_number: which agent should be updated (int)
+        :return: None
+        """
+        # Get the centralized states
         states_centralized = states.view(-1, self.state_size * self.n_agents)
         agent = self.agents[agent_number]
+
+        # Get the centralized actions
         actions_pred_centralized = []
         for i_critic, agent_critic in enumerate(self.agents):
             action_pred = agent_critic.actor_local.forward(states[:, i_critic, :])
@@ -308,7 +378,6 @@ class MADDPGAgent:
         critic_action_values = agent.critic_local.forward(states_centralized, actions_pred_centralized)
         # Calculate the loss
         loss = -critic_action_values.mean()
-        #set_trace()
         # Minimize the loss
         agent.actor_optimizer.zero_grad()
         loss.backward()
