@@ -94,7 +94,7 @@ class ActorArchitecture(nn.Module, RLModel):
         self.fc1.weight.data.uniform_(*hidden_init(self.fc1))
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc3.weight.data.uniform_(-3e-3, 3e-3)
-        #self.fc3.weight.data.uniform_(*hidden_init(self.fc2))
+        # self.fc3.weight.data.uniform_(*hidden_init(self.fc2))
 
 
 def hidden_init(layer):
