@@ -44,8 +44,8 @@ The [**MADDPG**](https://arxiv.org/abs/1706.02275) algorithm has been used as a 
 - The concept of *centralized critic* is introduced, which simply consists of providing the information of the states and actions of all the agents to the critic of each agent. 
 - The learned policy uses only local information at execution time (i.e. data coming only from the agent interaction with the environment), which means that there is no communication between agents required. 
 
-![maddpg_architecture](../imgs/maddpg_architecture.png)
-![maddpg_algorithm](../imgs/algorithm.png)
+![maddpg_architecture](./imgs/maddpg_architecture.png)
+![maddpg_algorithm](./imgs/algorithm.png)
 
 The neural networks implemented to solve this environment (both for the critic and for the agent) are simply Multi-Layer Perceptrons with 3 256-units hidden layers.
 
