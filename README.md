@@ -5,7 +5,7 @@ Iván Vallés Pérez - December 2018
 ## Introduction
 In this project, the Unity [Tennis](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#tennis) environment is used in order to train a deep reinforcement learning algorithm in a multi-agent setting.
 
-![Trained Agent][./imgs/tennis.gif]
+![Trained Agent](./imgs/tennis.gif)
 
 
 ## Environment dynamics
@@ -84,7 +84,7 @@ Follow the instructions in `./notebooks/report_tennis.ipynb` to review the train
 ## Results
 The algorithm, with a bit of parameter tunning, has been able to successfully achieve the goal (+0.5 average return over the last 100 episodes). Below, a figure summarizing the training process is shown.
 
-![training performance](../imgs/performance.png)
+![training performance](./imgs/performance.png)
 
 
 ## Conclusions
@@ -99,3 +99,9 @@ There are several points of improvement and next steps in the current implementa
 - In order to try to achieve a more natural movement of the rackets, a penalty for movements is proposed. The biological analogy of it would be the concept of **laziness**. Now, the agent does not have any penalty for doing wiggling or useless movements, penalizing high corrections (high accelerations) can potentially lead to more natural movement. One example of these useless movements could be the movements of the racket of an agent after successfully hitting the ball.
 - The current setting motivates the agent to collaborate, but **no competition is promoted**. Giving reward when the contrary misses the ball could lead to interesting aggressive behaviors.
 - *Batch Normalization* and *layer normalization* must be tested with the aim of improving the current results.
+
+## Contribution
+This repository is fully open to contribution. If you wish to correct a bug, extend the functionality or complete the documentation (or anything else), please, feel free to make a pull request. It will be revised as soon as possible :D. In addition to that, any kind of feedback is welcome.
+
+## License
+This repository has been licensed under MIT agreement. For more information check the `LICENSE` file. Copyright (c) 2018 Iván Vallés Pérez
