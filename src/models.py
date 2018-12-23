@@ -47,7 +47,6 @@ class CriticArchitecture(nn.Module, RLModel):
         out = self.fc4(h)
         return out
 
-
     def reset_parameters(self):
         """
         Neural networks weights initalization

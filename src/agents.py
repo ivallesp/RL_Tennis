@@ -35,7 +35,7 @@ class DDPGAgent:
                                         n_agents=n_agents, random_seed=random_seed)
         self.critic_target = critic_arch(state_size=state_size, action_size=action_size,
                                          n_agents=n_agents, random_seed=random_seed)
-        self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=1e-3)
+        self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=1e-4)
 
         self.actor_local = actor_arch(state_size=state_size, action_size=action_size,
                                       random_seed=random_seed)
