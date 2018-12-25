@@ -18,7 +18,7 @@ class RLModel:
 
 # Model critic
 class CriticArchitecture(nn.Module, RLModel):
-    def __init__(self, state_size, action_size, n_agents, random_seed):
+    def __init__(self, state_size, action_size, random_seed):
         """
         Neural network used to implement the critic function
         :param state_size: size of the state (int)
@@ -27,8 +27,8 @@ class CriticArchitecture(nn.Module, RLModel):
         """
         super(CriticArchitecture, self).__init__()
         torch.manual_seed(random_seed)
-        self.fc1 = nn.Linear(state_size*n_agents, 256)
-        self.fc2 = nn.Linear(256 + action_size*n_agents, 256)
+        self.fc1 = nn.Linear(state_size, 256)
+        self.fc2 = nn.Linear(256 + action_size, 256)
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 1)
         self.reset_parameters()

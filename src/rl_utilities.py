@@ -90,9 +90,9 @@ class ExperienceReplay():
         buffer_sample = random.choices(self.buffer, k=sample_size)
         #set_trace()
         states, actions, rewards, next_states, dones = zip(*buffer_sample)
-        states = torch.from_numpy(np.array(states).squeeze()).float()
-        actions = torch.from_numpy(np.array(actions).squeeze()).float()
-        rewards = torch.from_numpy(np.expand_dims(np.array(rewards), 1)).float()
-        next_states = torch.from_numpy(np.array(next_states).squeeze()).float()
-        dones = torch.from_numpy(np.expand_dims(np.array(dones)+0, 1)).float()
+        states = [torch.from_numpy(np.array(s)).float() for s in zip(*states)]
+        actions = [torch.from_numpy(np.array(a)).float() for a in zip(*actions)]
+        rewards = torch.from_numpy(np.array(rewards)).float()
+        next_states = [torch.from_numpy(np.array(ns)).float() for ns in zip(*next_states)]
+        dones = torch.from_numpy(np.array(dones)+0).float()
         return states, actions, rewards, next_states, dones

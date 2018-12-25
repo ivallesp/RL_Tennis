@@ -9,7 +9,8 @@ import torch.nn.functional as F
 
 class DDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_size, action_size, tau, gamma, replay_size, batch_size,
-                 n_agents=1, n_batches_train=1, alpha=0, random_seed=655321):
+                 n_agents=1, n_batches_train=1, alpha=0, random_seed=655321, _centralized_action_size=None,
+                 _centralized_state_size=None):
         """
         Agent implementing DDPG algorithm. More info here: https://arxiv.org/abs/1509.02971
         :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
@@ -28,12 +29,25 @@ class DDPGAgent:
         :param n_batches_train: number of batches to train in each agent step (int)
         :param alpha: effort punishment (experiment) (float)
         :param random_seed: random seed for numpy and pytorch (int)
+        :param _centralized_action_size: add by compatibility with MADDPG. If DDPG is intended to be used (standalone),
+        leave it as None. If MADDPG is intended to be implemented, instead, this will hold the centralized action size
+        for the critic (int)
+        :param _centralized_state_size: add by compatibility with MADDPG. If DDPG is intended to be used (standalone),
+        leave it as None. If MADDPG is intended to be implemented, instead, this will hold the centralized state size
+        for the critic (int)
         """
+        if (_centralized_action_size is None) and (_centralized_state_size is None):
+            critic_state_size = state_size
+            critic_action_size = action_size
+        else:
+            critic_state_size = _centralized_state_size
+            critic_action_size = _centralized_action_size
+
         np.random.seed(random_seed)
-        self.critic_local = critic_arch(state_size=state_size, action_size=action_size,
-                                        n_agents=n_agents, random_seed=random_seed)
-        self.critic_target = critic_arch(state_size=state_size, action_size=action_size,
-                                         n_agents=n_agents, random_seed=random_seed)
+        self.critic_local = critic_arch(state_size=critic_state_size, action_size=critic_action_size,
+                                        random_seed=random_seed)
+        self.critic_target = critic_arch(state_size=critic_state_size, action_size=critic_action_size,
+                                         random_seed=random_seed)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=1e-4)
 
         self.actor_local = actor_arch(state_size=state_size, action_size=action_size,
@@ -205,7 +219,7 @@ class OUNoise:
 
 
 class MADDPGAgent:
-    def __init__(self, critic_arch, actor_arch, state_size, action_size, tau, gamma, replay_size, batch_size,
+    def __init__(self, critic_arch, actor_arch, state_sizes, action_sizes, tau, gamma, replay_size, batch_size,
                  n_agents=1, n_batches_train=1, alpha=0, random_seed=655321):
         """
         Agent implementing MADDPG algorithm. More info here: https://arxiv.org/abs/1706.02275
@@ -213,8 +227,8 @@ class MADDPGAgent:
         src.models module (pytorch model object)
         :param actor_arch: pytorch neural network implementing a actor function (s -> P(a|s)), located in the
         src.models module (pytorch model object)
-        :param state_size: size of the state space (int)
-        :param action_size: size of the action space (int)
+        :param state_sizes: size of the state spaces (list of ints)
+        :param action_sizes: size of the action spaces (list of ints)
         :param tau: constant controling the rate of the soft update of the target networks from the local
         networks (float)
         :param gamma: discount factor (float)
@@ -226,11 +240,17 @@ class MADDPGAgent:
         :param alpha: effort punishment (experiment) (float)
         :param random_seed: random seed for numpy and pytorch (int)
         """
-        # Initialize agents
-        self.agents = [DDPGAgent(critic_arch=critic_arch,
+        # Initialize
+        self.centralized_action_size = sum(action_sizes)
+        self.centralized_state_size = sum(state_sizes)
+        self.agents = []
+        assert len(state_sizes) == n_agents
+        assert len(action_sizes) == n_agents
+        for i in range(n_agents):
+            agent = DDPGAgent(critic_arch=critic_arch,
                                  actor_arch=actor_arch,
-                                 state_size=state_size,
-                                 action_size=action_size,
+                                 state_size=state_sizes[i],
+                                 action_size=action_sizes[i],
                                  tau=tau,
                                  gamma=gamma,
                                  replay_size=replay_size,
@@ -238,15 +258,18 @@ class MADDPGAgent:
                                  n_agents=n_agents,
                                  n_batches_train=n_batches_train,
                                  alpha=alpha,
-                                 random_seed=random_seed+i)
-                       for i in range(n_agents)]
+                                 random_seed=random_seed+i,
+                                 _centralized_action_size=self.centralized_action_size,
+                                 _centralized_state_size=self.centralized_state_size)
+            self.agents.append(agent)
+
 
         # General experience replay buffer
         self.replay_buffer = ExperienceReplay(int(replay_size))
 
         self.n_agents = n_agents
-        self.state_size = state_size
-        self.action_size = action_size
+        self.state_sizes = state_sizes
+        self.action_sizes = action_sizes
         self.replay_size = replay_size
         self.batch_size = batch_size
         self.n_batches_train = n_batches_train
@@ -259,12 +282,11 @@ class MADDPGAgent:
         :param use_target_model: indicates if target model should be used instead of local model (bool)
         :return: actions to take (iterable)
         """
-        assert states.shape[0] == self.n_agents
+        assert len(states) == self.n_agents
         actions = []
         for i, agent in enumerate(self.agents):
-            actions.append(agent.act(states=states[[i], :], epsilon=epsilon,
+            actions.append(agent.act(states=np.array(states[i]), epsilon=epsilon,
                                      use_target_model=use_target_model))
-        actions = np.array(actions).squeeze()
         return actions
 
     def step(self, states, actions, rewards, next_states, dones):
@@ -331,13 +353,20 @@ class MADDPGAgent:
         # Calculate next actions centralized using actor target network
         next_actions_centralized = []
         for i_critic, agent_critic in enumerate(self.agents):
-            next_actions_centralized.append(agent_critic.actor_target.forward(next_states[:, i_critic, :]))
+            next_actions_centralized.append(agent_critic.actor_target.forward(next_states[i_critic]))
         next_actions_centralized = torch.cat(next_actions_centralized, 1)
 
         # Calculate the centralized versions of the states, next states and actions
-        states_centralized = states.view(-1, self.state_size*self.n_agents)
-        next_states_centralized = next_states.view(-1, self.state_size*self.n_agents)
-        actions_centralized = actions.view(-1, self.action_size*self.n_agents)
+        states_centralized = torch.cat(states, 1)
+        next_states_centralized = torch.cat(next_states, 1)
+        actions_centralized = torch.cat(actions, 1)
+
+        assert states_centralized.shape[1] == self.centralized_state_size
+        assert next_states_centralized.shape[1] == self.centralized_state_size
+        assert actions_centralized.shape[1] == self.centralized_action_size
+        assert states_centralized.shape[0] == self.batch_size
+        assert next_states_centralized.shape[0] == self.batch_size
+        assert actions_centralized.shape[0] == self.batch_size
 
         # Calculate the q_value future to calculate the target
         with torch.no_grad():
@@ -364,13 +393,16 @@ class MADDPGAgent:
         :return: None
         """
         # Get the centralized states
-        states_centralized = states.view(-1, self.state_size * self.n_agents)
+        states_centralized = torch.cat(states, 1)
+        assert states_centralized.shape[1] == self.centralized_state_size
+        assert states_centralized.shape[0] == self.batch_size
+
         agent = self.agents[agent_number]
 
         # Get the centralized actions
         actions_pred_centralized = []
         for i_critic, agent_critic in enumerate(self.agents):
-            action_pred = agent_critic.actor_local.forward(states[:, i_critic, :])
+            action_pred = agent_critic.actor_local.forward(states[i_critic])
             action_pred = action_pred.detach() if agent_number!=i_critic else action_pred
             actions_pred_centralized.append(action_pred)
 
