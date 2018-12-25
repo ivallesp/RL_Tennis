@@ -5,12 +5,13 @@ import numpy as np
 from torch import optim
 import torch
 import torch.nn.functional as F
+from src.torch_utilities import ohe_torch
 
 
 class DDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_size, action_size, tau, gamma, replay_size, batch_size,
                  n_agents=1, n_batches_train=1, alpha=0, random_seed=655321, _centralized_action_size=None,
-                 _centralized_state_size=None):
+                 _centralized_state_size=None, discrete_actions=False):
         """
         Agent implementing DDPG algorithm. More info here: https://arxiv.org/abs/1509.02971
         :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
@@ -35,6 +36,8 @@ class DDPGAgent:
         :param _centralized_state_size: add by compatibility with MADDPG. If DDPG is intended to be used (standalone),
         leave it as None. If MADDPG is intended to be implemented, instead, this will hold the centralized state size
         for the critic (int)
+        :param discrete_actions: is the action space discrete? (bool)
+
         """
         if (_centralized_action_size is None) and (_centralized_state_size is None):
             critic_state_size = state_size
@@ -51,16 +54,17 @@ class DDPGAgent:
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=1e-4)
 
         self.actor_local = actor_arch(state_size=state_size, action_size=action_size,
-                                      random_seed=random_seed)
+                                      random_seed=random_seed, discrete_output=discrete_actions)
         self.actor_target = actor_arch(state_size=state_size, action_size=action_size,
-                                       random_seed=random_seed)
+                                       random_seed=random_seed, discrete_output=discrete_actions)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=1e-4)
 
         # Equalize target and local networks
         self._soft_target_update(tau=1)
 
         # Noise
-        self.noise = OUNoise(action_dimension=action_size, scale=1.0)
+        if not discrete_actions:
+            self.noise = OUNoise(action_dimension=action_size, scale=1.0)
 
         # Experience replay buffer
         self.replay_buffer = ExperienceReplay(int(replay_size))
@@ -73,6 +77,7 @@ class DDPGAgent:
         self.n_agents = n_agents
         self.state_size = state_size
         self.action_size = action_size
+        self.discrete_actions = discrete_actions
 
     def step(self, states, actions, rewards, next_states, dones):
         """
@@ -120,7 +125,8 @@ class DDPGAgent:
         Performs the agent related tasks required when reseting the environment.
         :return: None
         """
-        self.noise.reset()
+        if not self.discrete_actions:
+            self.noise.reset()
 
     def act(self, states, epsilon=1, use_target_model=False):
         """
@@ -138,8 +144,13 @@ class DDPGAgent:
         with torch.no_grad():
             actions = model.forward(states).cpu().data.numpy()
         model.train()
-        actions += self.noise.sample()*epsilon
-        actions = np.clip(actions, -1, 1)
+        if self.discrete_actions:
+            actions = np.argmax(actions)
+            if random.random() > epsilon: # Epsilon greedy
+                actions = np.random.randint(0, self.action_size)
+        else:
+            actions += self.noise.sample()*epsilon # Continuous Noise Process (OU)
+            actions = np.clip(actions, -1, 1)
         return actions
 
     def _soft_target_update(self, tau=None):
@@ -220,7 +231,7 @@ class OUNoise:
 
 class MADDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_sizes, action_sizes, tau, gamma, replay_size, batch_size,
-                 n_agents=1, n_batches_train=1, alpha=0, random_seed=655321):
+                 n_agents=1, n_batches_train=1, alpha=0, discrete_actions=False, random_seed=655321):
         """
         Agent implementing MADDPG algorithm. More info here: https://arxiv.org/abs/1706.02275
         :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
@@ -238,6 +249,7 @@ class MADDPGAgent:
          action-value function) (int)
         :param n_batches_train: number of batches to train in each agent step (int)
         :param alpha: effort punishment (experiment) (float)
+        :param discrete_actions: is the action space discrete? (bool)
         :param random_seed: random seed for numpy and pytorch (int)
         """
         # Initialize
@@ -260,7 +272,8 @@ class MADDPGAgent:
                                  alpha=alpha,
                                  random_seed=random_seed+i,
                                  _centralized_action_size=self.centralized_action_size,
-                                 _centralized_state_size=self.centralized_state_size)
+                                 _centralized_state_size=self.centralized_state_size,
+                                 discrete_actions=discrete_actions)
             self.agents.append(agent)
 
 
@@ -273,6 +286,7 @@ class MADDPGAgent:
         self.replay_size = replay_size
         self.batch_size = batch_size
         self.n_batches_train = n_batches_train
+        self.discrete_actions = discrete_actions
 
     def act(self, states, epsilon, use_target_model=False):
         """
@@ -289,7 +303,7 @@ class MADDPGAgent:
                                      use_target_model=use_target_model))
         return actions
 
-    def step(self, states, actions, rewards, next_states, dones):
+    def step(self, states, actions, rewards, next_states, dones, train=True):
         """
         Update the experience replay buffer and trains the networks
         :param states: observation variables of the MDP (iterable)
@@ -297,18 +311,20 @@ class MADDPGAgent:
         :param rewards: rewards achieved (iterable)
         :param next_states: next observation where the agent lead to (iterable)
         :param dones: did the environment done? (iterable)
+        :param train: should the agent be trained in this iteration? (bool)
         :return: None
         """
         self.replay_buffer.append([states, actions, rewards, next_states, dones])
 
-        for _ in range(self.n_batches_train):
-            # Sample a batch of experiences
-            states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch = \
-                self.replay_buffer.draw_sample(self.batch_size)
+        if train:
+            for _ in range(self.n_batches_train):
+                # Sample a batch of experiences
+                states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch = \
+                    self.replay_buffer.draw_sample(self.batch_size)
 
-            # Train
-            if self.replay_buffer.length > self.batch_size:
-                self.update(states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch)
+                # Train
+                if self.replay_buffer.length > self.batch_size:
+                    self.update(states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch)
 
     def update(self, states, actions, rewards, next_states, dones):
         """
@@ -349,6 +365,10 @@ class MADDPGAgent:
         :param agent_number: which agent should be updated (int)
         :return: None
         """
+        # If discrete, ohe actions
+        if self.discrete_actions:
+            actions = [ohe_torch(a, digits) for a, digits in zip(actions, self.action_sizes)]
+
         agent = self.agents[agent_number]
         # Calculate next actions centralized using actor target network
         next_actions_centralized = []

@@ -26,7 +26,7 @@ def ewmsd(x, span=100):
     return pd.Series(x).ewm(span=span).std()
 
 
-def plot_smoothed_return(scores, span=100):
+def plot_smoothed_return(scores, span=100, title=""):
     """
     Function in charge of genetrating the figures for visualization
     :param scores:
@@ -42,7 +42,7 @@ def plot_smoothed_return(scores, span=100):
     plt.fill_between(range(len(means)), means + stds, means - stds,
                      color='#1f77b4', alpha=.3)
     plt.plot(means, color='#1f77b4')
-
+    plt.title(title)
     plt.xlabel("# of episodes")
     plt.ylabel("Cummulative reward")
     plt.legend(["Average return", "Individual returns", "Standard deviation"])

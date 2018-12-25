@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from src.torch_utilities import gumbel_softmax
 
 
 # RLModel class
@@ -59,15 +60,17 @@ class CriticArchitecture(nn.Module, RLModel):
 
 # Model actor
 class ActorArchitecture(nn.Module, RLModel):
-    def __init__(self, state_size, action_size, random_seed):
+    def __init__(self, state_size, action_size, random_seed, discrete_output=False,):
         """
         Neural network implementing the Actor function
         :param state_size: size of the observation space (int)
         :param action_size: size of the action space (int)
         :param random_seed: seed for the random processes (int)
+        :param discrete_output: determines if a gumbel softmax should be calculated in the output or not (bool)
         """
         super(ActorArchitecture, self).__init__()
         torch.manual_seed(random_seed)
+        self.discrete_output = discrete_output
         self.fc1 = nn.Linear(state_size, 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 256)
@@ -84,7 +87,10 @@ class ActorArchitecture(nn.Module, RLModel):
         h = F.relu(self.fc2(h))
         h = F.relu(self.fc3(h))
         out = F.tanh(self.fc4(h))
-        return out
+        if self.discrete_output:
+            return gumbel_softmax(out, 0.8)
+        else:
+            return out
 
     def reset_parameters(self):
         """
