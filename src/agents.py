@@ -151,7 +151,7 @@ class DDPGAgent:
             actions = model.forward(states).cpu().data.numpy()
         model.train()
         if self.discrete_actions:
-            actions = np.argmax(actions)
+            actions = np.random.choice(list(range(len(np.squeeze(actions)))), p=np.squeeze(actions))
             if random.random() > epsilon: # Epsilon greedy
                 actions = np.random.randint(0, self.action_size)
         else:
@@ -308,7 +308,7 @@ class MADDPGAgent:
         assert len(states) == self.n_agents
         actions = []
         for i, agent in enumerate(self.agents):
-            actions.append(agent.act(states=np.array(states[i]), epsilon=epsilon,
+            actions.append(agent.act(states=np.expand_dims(np.array(states[i]),0), epsilon=epsilon,
                                      use_target_model=use_target_model))
         return actions
 

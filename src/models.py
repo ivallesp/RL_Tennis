@@ -88,7 +88,7 @@ class ActorArchitecture(nn.Module, RLModel):
         h = F.relu(self.fc3(h))
         out = F.tanh(self.fc4(h))
         if self.discrete_output:
-            return gumbel_softmax(out, 0.8)
+            return torch.nn.Softmax(dim=1)(out)
         else:
             return out
 
