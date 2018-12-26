@@ -11,7 +11,7 @@ from src.torch_utilities import ohe_torch
 class DDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_size, action_size, tau, gamma, replay_size, batch_size,
                  n_agents=1, n_batches_train=1, alpha=0, random_seed=655321, _centralized_action_size=None,
-                 _centralized_state_size=None, discrete_actions=False):
+                 _centralized_state_size=None, discrete_actions=False, run_in_gpu=False):
         """
         Agent implementing DDPG algorithm. More info here: https://arxiv.org/abs/1509.02971
         :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
@@ -37,7 +37,7 @@ class DDPGAgent:
         leave it as None. If MADDPG is intended to be implemented, instead, this will hold the centralized state size
         for the critic (int)
         :param discrete_actions: is the action space discrete? (bool)
-
+        :param run_in_gpu: indicates if the pytorch operations should run in gpu (bool)
         """
         if (_centralized_action_size is None) and (_centralized_state_size is None):
             critic_state_size = state_size
@@ -49,14 +49,18 @@ class DDPGAgent:
         np.random.seed(random_seed)
         self.critic_local = critic_arch(state_size=critic_state_size, action_size=critic_action_size,
                                         random_seed=random_seed)
+        self.critic_local = self.critic_local.cuda() if run_in_gpu else self.critic_local
         self.critic_target = critic_arch(state_size=critic_state_size, action_size=critic_action_size,
                                          random_seed=random_seed)
+        self.critic_target = self.critic_target.cuda() if run_in_gpu else self.critic_target
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=1e-4)
 
         self.actor_local = actor_arch(state_size=state_size, action_size=action_size,
                                       random_seed=random_seed, discrete_output=discrete_actions)
+        self.actor_local = self.actor_local.cuda() if run_in_gpu else self.actor_local
         self.actor_target = actor_arch(state_size=state_size, action_size=action_size,
                                        random_seed=random_seed, discrete_output=discrete_actions)
+        self.actor_target = self.actor_target.cuda() if run_in_gpu else self.actor_target
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=1e-4)
 
         # Equalize target and local networks
@@ -78,6 +82,7 @@ class DDPGAgent:
         self.state_size = state_size
         self.action_size = action_size
         self.discrete_actions = discrete_actions
+        self.run_in_gpu = run_in_gpu
 
     def step(self, states, actions, rewards, next_states, dones):
         """
@@ -138,6 +143,7 @@ class DDPGAgent:
         """
         model = self.actor_local if not use_target_model else self.actor_target
         states = torch.from_numpy(states).float()
+        states = states.cuda() if self.run_in_gpu else states
         if states.dim==1:
             states = torch.unsqueeze(states, 0)
         model.eval()
@@ -231,7 +237,7 @@ class OUNoise:
 
 class MADDPGAgent:
     def __init__(self, critic_arch, actor_arch, state_sizes, action_sizes, tau, gamma, replay_size, batch_size,
-                 n_agents=1, n_batches_train=1, alpha=0, discrete_actions=False, random_seed=655321):
+                 n_agents=1, n_batches_train=1, alpha=0, discrete_actions=False, random_seed=655321, run_in_gpu=False):
         """
         Agent implementing MADDPG algorithm. More info here: https://arxiv.org/abs/1706.02275
         :param critic_arch: pytorch neural network implementing a critic function (s, a -> Q), located in the
@@ -251,6 +257,7 @@ class MADDPGAgent:
         :param alpha: effort punishment (experiment) (float)
         :param discrete_actions: is the action space discrete? (bool)
         :param random_seed: random seed for numpy and pytorch (int)
+        :param run_in_gpu: indicates if the pytorch operations should run in gpu (bool)
         """
         # Initialize
         self.centralized_action_size = sum(action_sizes)
@@ -273,12 +280,13 @@ class MADDPGAgent:
                                  random_seed=random_seed+i,
                                  _centralized_action_size=self.centralized_action_size,
                                  _centralized_state_size=self.centralized_state_size,
-                                 discrete_actions=discrete_actions)
+                                 discrete_actions=discrete_actions,
+                                 run_in_gpu=run_in_gpu)
             self.agents.append(agent)
 
 
         # General experience replay buffer
-        self.replay_buffer = ExperienceReplay(int(replay_size))
+        self.replay_buffer = ExperienceReplay(int(replay_size), run_in_gpu=run_in_gpu)
 
         self.n_agents = n_agents
         self.state_sizes = state_sizes
@@ -287,6 +295,7 @@ class MADDPGAgent:
         self.batch_size = batch_size
         self.n_batches_train = n_batches_train
         self.discrete_actions = discrete_actions
+        self.run_in_gpu = run_in_gpu
 
     def act(self, states, epsilon, use_target_model=False):
         """

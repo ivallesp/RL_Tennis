@@ -49,12 +49,13 @@ def plot_smoothed_return(scores, span=100, title=""):
 
 
 class ExperienceReplay():
-    def __init__(self, size=int(1e5)):
+    def __init__(self, size=int(1e5), run_in_gpu=False):
         """
         Experience replay buffer
         :param size: size of the batch
         """
         self.size = size
+        self.run_in_gpu = run_in_gpu
         self.reset()
 
 
@@ -95,4 +96,10 @@ class ExperienceReplay():
         rewards = torch.from_numpy(np.array(rewards)).float()
         next_states = [torch.from_numpy(np.array(ns)).float() for ns in zip(*next_states)]
         dones = torch.from_numpy(np.array(dones)+0).float()
+        if self.run_in_gpu:
+            states = [s.cuda() for s in states]
+            actions = [a.cuda() for a in actions]
+            rewards = rewards.cuda()
+            next_states = [ns.cuda() for ns in next_states]
+            dones = dones.cuda()
         return states, actions, rewards, next_states, dones
