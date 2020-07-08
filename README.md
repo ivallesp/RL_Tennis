@@ -1,4 +1,4 @@
-# Project 3: Collaboration and Competition
+# Collaboration and Competition in a table tennis environment
 
 Iván Vallés Pérez - December 2018
 
