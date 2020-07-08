@@ -20,7 +20,7 @@ The task is episodic, and in order to solve the environment, the agents must get
 
 The environment is considered solved, when the average (over 100 episodes) of those **scores** is at least +0.5.
 
-This repository solves this problem, the main implementation can be found in the following jupyter [notebook](notebooks/report_tennis.ipynb).
+This repository solves this problem, the main implementation can be found in the following jupyter [notebook](notebooks/Report_tennis.ipynb).
 
 **Summary**
 
